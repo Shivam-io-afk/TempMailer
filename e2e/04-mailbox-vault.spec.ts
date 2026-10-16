@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { setupMockGuerrillaApi } from './helpers';
 
 test.describe('TempMailer — Multi-Mailbox Vault Switcher', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupMockGuerrillaApi(page);
+  });
+
   test('adds additional mailboxes and switches between them', async ({ page }) => {
     await page.goto('/');
 
@@ -38,4 +43,3 @@ test.describe('TempMailer — Multi-Mailbox Vault Switcher', () => {
     await expect(addressDisplay).toHaveText(secondAddress);
   });
 });
-

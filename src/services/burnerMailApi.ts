@@ -1,6 +1,26 @@
 import type { BurnerMailbox, BurnerMessage } from '../types';
 
 const BASE_URL = 'https://api.guerrillamail.com/ajax.php';
+const TIMEOUT_MS = 8000;
+
+async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return res;
+  } catch (err: unknown) {
+    if ((err as Error).name === 'AbortError') {
+      throw new Error('Connection timed out. GuerrillaMail API is busy, please retry.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export interface RawEmailItem {
   mail_id: number | string;
@@ -27,7 +47,7 @@ export interface RawEmailDetail {
  */
 export async function initBurnerMailbox(): Promise<BurnerMailbox> {
   const url = `${BASE_URL}?f=get_email_address`;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: 'GET',
     headers: { 'Accept': 'application/json' },
   });
@@ -58,7 +78,7 @@ export async function initBurnerMailbox(): Promise<BurnerMailbox> {
  */
 export async function checkBurnerMessages(token: string): Promise<BurnerMessage[]> {
   const url = `${BASE_URL}?f=check_email&seq=0&sid_token=${encodeURIComponent(token)}`;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: 'GET',
     headers: { 'Accept': 'application/json' },
   });
@@ -90,7 +110,7 @@ export async function fetchBurnerMessageDetail(
   const url = `${BASE_URL}?f=fetch_email&email_id=${encodeURIComponent(
     mailId
   )}&sid_token=${encodeURIComponent(token)}`;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: 'GET',
     headers: { 'Accept': 'application/json' },
   });
@@ -118,7 +138,7 @@ export async function setCustomBurnerUsername(
   const url = `${BASE_URL}?f=set_email_user&email_user=${encodeURIComponent(
     cleanUser
   )}&sid_token=${encodeURIComponent(token)}`;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: 'GET',
     headers: { 'Accept': 'application/json' },
   });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Check, AtSign } from 'lucide-react';
 import { generateRandomIdentity } from '../../utils/cryptoGenerator';
 
@@ -36,6 +36,18 @@ export const ChangeAddressModal: React.FC<ChangeAddressModalProps> = ({
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Sync state whenever modal is opened with new active address
+  useEffect(() => {
+    if (isOpen) {
+      const parts = currentAddress.split('@');
+      // oxlint-disable-next-line react/set-state-in-effect
+      setUsername(parts[0] || '');
+      const dom = parts[1] || AVAILABLE_DOMAINS[0];
+      setDomain(AVAILABLE_DOMAINS.includes(dom) ? dom : AVAILABLE_DOMAINS[0]);
+      setError(null);
+    }
+  }, [isOpen, currentAddress]);
 
   if (!isOpen) return null;
 

@@ -79,6 +79,7 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
       setMessages([]);
       setSelectedMessage(null);
       setMessageDetail(null);
+      setMobileView('list');
       // Fetch initial messages (like welcome email)
       const initialMsgs = await checkBurnerMessages(newMailbox.token!);
       setMessages(initialMsgs);
@@ -95,10 +96,12 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
 
   // Switch active mailbox from vault
   const handleSwitchMailbox = async (target: BurnerMailbox) => {
+    setIsInitializing(false);
     if (target.address === mailbox?.address) return;
     setMailbox(target);
     setSelectedMessage(null);
     setMessageDetail(null);
+    setMobileView('list');
     setIsRefreshing(true);
     try {
       const msgs = await checkBurnerMessages(target.token!);
@@ -309,12 +312,34 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
     }
   };
 
-  // Delete mailbox
+  // Delete / Burn current active mailbox (BUG-003 fix)
   const handleDeleteMailbox = async () => {
-    if (mailbox?.address && mailbox.token) {
-      await forgetBurnerMailbox(mailbox.address, mailbox.token);
+    if (!mailbox) return;
+    setIsInitializing(true);
+    const oldAddr = mailbox.address;
+    const oldToken = mailbox.token;
+
+    // Reset mobile view
+    setMobileView('list');
+    setSelectedMessage(null);
+    setMessageDetail(null);
+
+    // 1. Remove from local vault storage
+    const remaining = removeMailboxFromVault(oldAddr);
+    setVault(remaining);
+
+    // 2. Forget on GuerrillaMail server
+    if (oldToken) {
+      void forgetBurnerMailbox(oldAddr, oldToken);
     }
-    initializeNewMailbox();
+
+    // 3. Switch to next available mailbox or create a fresh one
+    if (remaining.length > 0) {
+      setIsInitializing(false);
+      await handleSwitchMailbox(remaining[0]);
+    } else {
+      await initializeNewMailbox();
+    }
   };
 
   return (

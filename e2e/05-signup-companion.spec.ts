@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { setupMockGuerrillaApi } from './helpers';
 
 test.describe('TempMailer — Signup Companion Toolkit', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupMockGuerrillaApi(page);
+  });
+
   test('generates secure passwords and fake test personas', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 

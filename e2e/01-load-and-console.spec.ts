@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { setupMockGuerrillaApi } from './helpers';
 
 test.describe('TempMailer — Initial Load & UI Health', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupMockGuerrillaApi(page);
+  });
+
   test('loads without console errors or unhandled rejections', async ({ page }) => {
     const consoleErrors: string[] = [];
     page.on('console', (msg) => {
@@ -56,4 +61,3 @@ test.describe('TempMailer — Initial Load & UI Health', () => {
     }
   });
 });
-

@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { setupMockGuerrillaApi } from './helpers';
 
 test.describe('TempMailer — Copy & QR Code Modal', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupMockGuerrillaApi(page);
+  });
+
   test('copies email address to clipboard and displays feedback', async ({ page, context }) => {
     // Grant clipboard permissions
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
@@ -41,4 +46,3 @@ test.describe('TempMailer — Copy & QR Code Modal', () => {
     await expect(page.locator('text=Scan Disposable Email')).not.toBeVisible();
   });
 });
-

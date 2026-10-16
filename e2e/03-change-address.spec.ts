@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { setupMockGuerrillaApi } from './helpers';
 
 test.describe('TempMailer — Change Address & Custom Domain', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupMockGuerrillaApi(page);
+  });
+
   test('customizes username and domain via ChangeAddressModal', async ({ page }) => {
     await page.goto('/');
 
@@ -59,4 +64,3 @@ test.describe('TempMailer — Change Address & Custom Domain', () => {
     await expect(page.locator('text=Change Email Address')).not.toBeVisible();
   });
 });
-

@@ -41,6 +41,24 @@ export const MessageDetail: React.FC<MessageDetailProps> = ({
     );
   }, [message, detail]);
 
+  // Security & UX critical: sanitize HTML with DOMPurify and enforce target="_blank" rel="noopener noreferrer"
+  const sanitizedHtml = useMemo(() => {
+    if (!message) return '';
+    DOMPurify.removeHook('afterSanitizeAttributes');
+    DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+      if (node.tagName === 'A') {
+        node.setAttribute('target', '_blank');
+        node.setAttribute('rel', 'noopener noreferrer');
+      }
+    });
+
+    const raw = detail?.mail_body || message.bodyPreview;
+    return DOMPurify.sanitize(raw, {
+      ADD_ATTR: ['target', 'rel'],
+      FORBID_TAGS: ['script', 'iframe', 'object', 'embed'],
+    });
+  }, [detail?.mail_body, message]);
+
   const handleCopyCode = async (code: string) => {
     try {
       await navigator.clipboard.writeText(code);
@@ -60,7 +78,16 @@ export const MessageDetail: React.FC<MessageDetailProps> = ({
 
   if (!message) {
     return (
-      <div className="h-full min-h-[320px] flex flex-col items-center justify-center p-8 text-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl">
+      <div className="h-full min-h-[320px] flex flex-col items-center justify-center p-8 text-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl relative">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="md:hidden absolute top-4 left-4 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center space-x-1 cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to inbox</span>
+          </button>
+        )}
         <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 mb-3">
           <Eye className="w-6 h-6" />
         </div>
@@ -87,13 +114,6 @@ export const MessageDetail: React.FC<MessageDetailProps> = ({
       </div>
     );
   }
-
-  const rawHtml = detail?.mail_body || message.bodyPreview;
-  // Security critical: sanitize all HTML with DOMPurify
-  const sanitizedHtml = DOMPurify.sanitize(rawHtml, {
-    ADD_ATTR: ['target'],
-    FORBID_TAGS: ['script', 'iframe', 'object', 'embed'],
-  });
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">

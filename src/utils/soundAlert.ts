@@ -1,5 +1,5 @@
 let titleInterval: number | null = null;
-const ORIGINAL_TITLE = 'TempGmail — Disposable Email & Gmail Power Suite';
+const ORIGINAL_TITLE = 'TempMailer — Instant Temporary Email for OTPs & Verification';
 
 /**
  * Plays a pleasant, subtle dual-tone notification chime using Web Audio API (0 external assets)
@@ -81,7 +81,7 @@ export function startTitleAlert(count: number = 1): void {
   let toggle = false;
   titleInterval = window.setInterval(() => {
     document.title = toggle
-      ? `(${count}) ✉️ New Email! • TempGmail`
+      ? `(${count}) ⚡ New OTP Received! • TempMailer`
       : ORIGINAL_TITLE;
     toggle = !toggle;
   }, 1000);

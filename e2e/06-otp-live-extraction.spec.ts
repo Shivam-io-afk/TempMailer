@@ -1,44 +1,22 @@
 import { test, expect } from '@playwright/test';
+import { setupMockGuerrillaApi } from './helpers';
 
 test.describe('TempMailer — OTP Auto-Extractor & Link Detector', () => {
   test('detects OTP code on inbox row and displays hero action card', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 
     // Mock GuerrillaMail API responses to simulate an incoming verification email
-    await page.route('**/ajax.php?f=check_email*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          list: [
-            {
-              mail_id: '99991',
-              mail_from: 'accounts@service.com',
-              mail_subject: 'Your confirmation code is 782049',
-              mail_excerpt: 'Please enter 782049 to verify your account or visit https://service.com/confirm?token=xyz999',
-              mail_date: '13:00',
-              mail_timestamp: 1792135000,
-              mail_read: 0,
-            },
-          ],
-          count: '1',
-        }),
-      });
-    });
-
-    await page.route('**/ajax.php?f=fetch_email*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
+    await setupMockGuerrillaApi(page, {
+      messages: [
+        {
           mail_id: '99991',
           mail_from: 'accounts@service.com',
           mail_subject: 'Your confirmation code is 782049',
-          mail_body: '<p>Welcome! Your verification code is <strong>782049</strong>.</p><p><a href="https://service.com/confirm?token=xyz999">Click here to activate your account</a></p>',
+          mail_excerpt: 'Please enter 782049 to verify your account or visit https://service.com/confirm?token=xyz999',
           mail_date: '13:00',
-          mail_recipient: 'test@guerrillamail.com',
-        }),
-      });
+          mail_body: '<p>Welcome! Your verification code is <strong>782049</strong>.</p><p><a href="https://service.com/confirm?token=xyz999">Click here to activate your account</a></p>',
+        },
+      ],
     });
 
     await page.goto('/');
@@ -77,4 +55,3 @@ test.describe('TempMailer — OTP Auto-Extractor & Link Detector', () => {
     await heroCopyBtn.click();
   });
 });
-
