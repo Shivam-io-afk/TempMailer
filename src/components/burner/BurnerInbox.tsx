@@ -48,7 +48,7 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
   const [messageDetail, setMessageDetail] = useState<RawEmailDetail | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
 
-  const [isInitializing, setIsInitializing] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(() => !getSavedBurnerMailbox());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -66,7 +66,6 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
   });
   const prevMessageCountRef = useRef<number>(0);
   const countdownTimerRef = useRef<number | null>(null);
-  const hasInitializedRef = useRef(false);
   const [vault, setVault] = useState<BurnerMailbox[]>(() => getSavedMailboxVault());
 
   // Initialize mailbox if none exists
@@ -165,21 +164,48 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
     }
   }, [mailbox, onUnreadChange, soundEnabled]);
 
-  // Initial setup
+  // Initial setup - robust against React StrictMode double mounting
   useEffect(() => {
-    if (hasInitializedRef.current) return;
-    hasInitializedRef.current = true;
+    let isCancelled = false;
 
-    const timer = setTimeout(() => {
-      if (!mailbox) {
-        void initializeNewMailbox();
-      } else {
-        void refreshMessages();
-      }
-    }, 0);
+    if (!mailbox) {
+      initBurnerMailbox()
+        .then(async (newMailbox) => {
+          if (isCancelled) return;
+          setMailbox(newMailbox);
+          setVault(getSavedMailboxVault());
+          setMessages([]);
+          setSelectedMessage(null);
+          setMessageDetail(null);
+          if (newMailbox.token) {
+            const initialMsgs = await checkBurnerMessages(newMailbox.token);
+            if (!isCancelled) {
+              setMessages(initialMsgs);
+              if (initialMsgs.length > 0) {
+                setSelectedMessage(initialMsgs[0]);
+              }
+            }
+          }
+        })
+        .catch((err: unknown) => {
+          if (isCancelled) return;
+          setError((err as Error).message || 'Failed to initialize disposable mailbox.');
+        })
+        .finally(() => {
+          if (isCancelled) return;
+          setIsInitializing(false);
+          setCountdown(15);
+        });
+    } else {
+      // oxlint-disable-next-line react/set-state-in-effect
+      void refreshMessages();
+    }
 
-    return () => clearTimeout(timer);
-  }, [mailbox, initializeNewMailbox, refreshMessages]);
+    return () => {
+      isCancelled = true;
+    };
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 15-second countdown timer for auto-refresh
   useEffect(() => {
@@ -358,11 +384,16 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
             </div>
 
             {isInitializing ? (
-              <div className="h-9 bg-zinc-200 dark:bg-zinc-800 rounded-xl w-72 animate-pulse"></div>
-            ) : (
+              <div className="flex items-center space-x-2 py-1">
+                <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" />
+                <span className="text-sm font-mono text-zinc-500 dark:text-zinc-400 animate-pulse">
+                  Generating disposable address...
+                </span>
+              </div>
+            ) : mailbox?.address ? (
               <div className="flex items-center space-x-3">
                 <span className="text-lg sm:text-xl md:text-2xl font-mono font-bold text-zinc-900 dark:text-zinc-50 tracking-tight truncate select-all">
-                  {mailbox?.address || 'Generating address...'}
+                  {mailbox.address}
                 </span>
                 <button
                   onClick={() => setIsChangeModalOpen(true)}
@@ -370,6 +401,15 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
                   title="Change address username or domain"
                 >
                   <Edit2 className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-2 py-1">
+                <button
+                  onClick={() => void initializeNewMailbox()}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer transition-colors shadow-xs"
+                >
+                  Generate Email Address
                 </button>
               </div>
             )}
