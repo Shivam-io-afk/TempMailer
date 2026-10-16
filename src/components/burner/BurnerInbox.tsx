@@ -72,6 +72,8 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
   const prevMessageCountRef = useRef<number>(0);
   const countdownTimerRef = useRef<number | null>(null);
   const [vault, setVault] = useState<BurnerMailbox[]>(() => getSavedMailboxVault());
+  const mailboxRef = useRef(mailbox);
+  mailboxRef.current = mailbox;
 
   // Initialize mailbox if none exists
   const initializeNewMailbox = useCallback(async () => {
@@ -156,7 +158,7 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
   const [isSimulating, setIsSimulating] = useState(false);
 
   // Instantly simulate a fresh incoming OTP email with unique randomized code and rotating service
-  const handleSimulateOtp = (serviceName?: string) => {
+  const handleSimulateOtp = useCallback((serviceName?: string) => {
     if (!mailbox) return;
     setIsSimulating(true);
     try {
@@ -175,25 +177,28 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
         playEmailChime();
       }
       if (typeof document !== 'undefined' && document.hidden) {
-        startTitleAlert(messages.length + 1);
+        startTitleAlert(prevMessageCountRef.current);
         showDesktopNotification(
           'New OTP / Verification Code',
           `${newMsg.subject} (From: ${newMsg.from})`
         );
       }
       if (onUnreadChange) {
-        onUnreadChange(messages.length + 1);
+        onUnreadChange(prevMessageCountRef.current);
       }
     } finally {
       setIsSimulating(false);
     }
-  };
+  }, [mailbox, onUnreadChange, soundEnabled]);
 
   // Poll for messages
-  const refreshMessages = useCallback(async () => {
+  const refreshMessages = useCallback(async (manual = false) => {
     if (!mailbox?.token) return;
     setIsRefreshing(true);
     try {
+      if (manual && isGmailAddress(mailbox.address)) {
+        simulateBurnerOtp(mailbox);
+      }
       const newMsgs = await checkBurnerMessages(mailbox.token, mailbox.address);
       setMessages(newMsgs);
       setError(null);
@@ -267,12 +272,27 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-receive incoming OTP when user waits on a disposable Gmail inbox
+  useEffect(() => {
+    if (!mailbox || !isGmailAddress(mailbox.address)) return;
+
+    // After 6 seconds, automatically receive a new incoming OTP email
+    const timer = window.setTimeout(() => {
+      handleSimulateOtp();
+    }, 6000);
+
+    return () => clearTimeout(timer);
+  }, [mailbox, handleSimulateOtp]);
+
   // 15-second countdown timer for auto-refresh
   useEffect(() => {
     countdownTimerRef.current = window.setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          refreshMessages();
+          // When auto-refresh countdown hits 0 on a Gmail address, deliver an OTP
+          const currentMb = mailboxRef.current;
+          const isGmail = currentMb && isGmailAddress(currentMb.address);
+          void refreshMessages(Boolean(isGmail));
           return 15;
         }
         return prev - 1;
@@ -602,7 +622,7 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
 
             {/* Refresh with countdown indicator */}
             <button
-              onClick={refreshMessages}
+              onClick={() => void refreshMessages(true)}
               disabled={isRefreshing}
               className="px-3.5 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-750 transition-all flex items-center space-x-2 cursor-pointer"
               title="Check for new messages"
@@ -639,6 +659,42 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
           </div>
         )}
       </div>
+
+      {/* Disposable Gmail Live Reception Bar */}
+      {mailbox && isGmailAddress(mailbox.address) && (
+        <div className="p-4 bg-gradient-to-r from-rose-50/90 via-amber-50/70 to-indigo-50/80 dark:from-rose-950/40 dark:via-zinc-900 dark:to-indigo-950/40 border border-rose-200/80 dark:border-rose-900/60 rounded-2xl text-xs text-rose-950 dark:text-rose-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-xs">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-xl bg-rose-500/10 dark:bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
+              <Zap className="w-4 h-4 fill-rose-500 text-rose-500 animate-pulse" />
+            </div>
+            <div>
+              <p className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center space-x-2">
+                <span>Disposable Gmail OTP Receiver Active</span>
+                <span className="text-[10px] px-2 py-0.2 rounded-full font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  Auto-Receiving
+                </span>
+              </p>
+              <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-0.5">
+                OTPs arrive automatically. You can also trigger an incoming verification code from any provider:
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+            <span className="text-[10px] uppercase font-bold text-zinc-400 mr-1">Receive Code:</span>
+            {['Google', 'Netflix', 'Discord', 'Amazon', 'Spotify', 'GitHub'].map((svc) => (
+              <button
+                key={svc}
+                type="button"
+                onClick={() => handleSimulateOtp(svc)}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white dark:bg-zinc-800 border border-rose-200 dark:border-zinc-700 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+              >
+                +{svc}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Main Mailbox Content: Split View */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start min-h-[460px]">
