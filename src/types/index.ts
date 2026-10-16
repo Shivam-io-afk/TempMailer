@@ -5,6 +5,9 @@ export interface BurnerMailbox {
   token?: string;
   createdAt: number;
   expiresAt?: number;
+  provider?: 'guerrilla' | 'gmail';
+  accessToken?: string;
+  isSimulated?: boolean;
 }
 
 export interface BurnerMessage {

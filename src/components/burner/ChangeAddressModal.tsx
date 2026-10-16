@@ -10,6 +10,8 @@ interface ChangeAddressModalProps {
 }
 
 const AVAILABLE_DOMAINS = [
+  'gmail.com',
+  'googlemail.com',
   'guerrillamailblock.com',
   'sharklasers.com',
   'guerrillamail.com',
@@ -61,9 +63,9 @@ export const ChangeAddressModal: React.FC<ChangeAddressModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanUser = username.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cleanUser = username.trim().toLowerCase().replace(/[^a-z0-9.]/g, '');
     if (!cleanUser) {
-      setError('Please enter a valid username with letters or numbers.');
+      setError('Please enter a valid username with letters, numbers, or dots.');
       return;
     }
     setError(null);
@@ -120,9 +122,9 @@ export const ChangeAddressModal: React.FC<ChangeAddressModalProps> = ({
               <input
                 type="text"
                 value={username}
-                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))}
+                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9.]/g, ''))}
                 placeholder="e.g. shivam99"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 text-sm font-mono focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20"
                 autoFocus
               />
               <button
@@ -136,7 +138,7 @@ export const ChangeAddressModal: React.FC<ChangeAddressModalProps> = ({
               </button>
             </div>
             <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">
-              Letters and numbers only.
+              Supports letters, numbers, and dots (e.g. user.name).
             </p>
           </div>
 
@@ -147,11 +149,11 @@ export const ChangeAddressModal: React.FC<ChangeAddressModalProps> = ({
             <select
               value={domain}
               onChange={(e) => setDomain(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 text-sm font-mono focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
             >
               {AVAILABLE_DOMAINS.map((d) => (
                 <option key={d} value={d}>
-                  @{d}
+                  @{d} {d.includes('gmail') ? '🔥 (Google Gmail - High Deliverability)' : ''}
                 </option>
               ))}
             </select>

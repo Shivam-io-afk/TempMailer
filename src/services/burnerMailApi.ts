@@ -1,4 +1,12 @@
 import type { BurnerMailbox, BurnerMessage } from '../types';
+import {
+  checkDisposableGmailMessages,
+  fetchDisposableGmailMessageDetail,
+  initDisposableGmailMailbox,
+  isGmailAddress,
+} from './gmailApi';
+
+export { initDisposableGmailMailbox, isGmailAddress };
 
 const BASE_URL = 'https://api.guerrillamail.com/ajax.php';
 const TIMEOUT_MS = 8000;
@@ -74,9 +82,13 @@ export async function initBurnerMailbox(): Promise<BurnerMailbox> {
 }
 
 /**
- * Checks for incoming emails in the active session
+ * Checks for incoming emails in the active session (Guerrilla or Gmail)
  */
-export async function checkBurnerMessages(token: string): Promise<BurnerMessage[]> {
+export async function checkBurnerMessages(token: string, address?: string): Promise<BurnerMessage[]> {
+  if (token?.startsWith('gmail_') || (address && isGmailAddress(address))) {
+    return checkDisposableGmailMessages(address || token);
+  }
+
   const url = `${BASE_URL}?f=check_email&seq=0&sid_token=${encodeURIComponent(token)}`;
   const response = await fetchWithTimeout(url, {
     method: 'GET',
@@ -105,8 +117,13 @@ export async function checkBurnerMessages(token: string): Promise<BurnerMessage[
  */
 export async function fetchBurnerMessageDetail(
   mailId: string,
-  token: string
+  token: string,
+  address?: string
 ): Promise<RawEmailDetail> {
+  if (token?.startsWith('gmail_') || (address && isGmailAddress(address))) {
+    return fetchDisposableGmailMessageDetail(mailId, address || '');
+  }
+
   const url = `${BASE_URL}?f=fetch_email&email_id=${encodeURIComponent(
     mailId
   )}&sid_token=${encodeURIComponent(token)}`;
@@ -128,11 +145,18 @@ export async function fetchBurnerMessageDetail(
  */
 export async function setCustomBurnerUsername(
   username: string,
-  token: string
+  token: string,
+  domain: string = 'guerrillamailblock.com'
 ): Promise<BurnerMailbox> {
-  const cleanUser = username.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const cleanUser = username.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
   if (!cleanUser) {
     throw new Error('Username must contain letters or numbers.');
+  }
+
+  if (domain === 'gmail.com' || domain === 'googlemail.com' || isGmailAddress(`x@${domain}`)) {
+    const mailbox = initDisposableGmailMailbox(cleanUser, domain);
+    addMailboxToVault(mailbox);
+    return mailbox;
   }
 
   const url = `${BASE_URL}?f=set_email_user&email_user=${encodeURIComponent(
@@ -163,6 +187,14 @@ export async function setCustomBurnerUsername(
  * Deletes current session
  */
 export async function forgetBurnerMailbox(address: string, token: string): Promise<void> {
+  if (isGmailAddress(address) || token?.startsWith('gmail_')) {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      sessionStorage.removeItem(`tempmailer_gmail_msgs_${address.toLowerCase()}`);
+      sessionStorage.removeItem('tempgmail_burner_session');
+    }
+    return;
+  }
+
   try {
     const url = `${BASE_URL}?f=forget_me&email_addr=${encodeURIComponent(
       address

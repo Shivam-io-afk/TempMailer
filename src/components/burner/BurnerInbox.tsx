@@ -12,6 +12,7 @@ import {
   Bell,
   BellOff,
   Plus,
+  Mail,
 } from 'lucide-react';
 import {
   playEmailChime,
@@ -23,6 +24,8 @@ import {
 import type { BurnerMailbox, BurnerMessage } from '../../types';
 import {
   initBurnerMailbox,
+  initDisposableGmailMailbox,
+  isGmailAddress,
   checkBurnerMessages,
   fetchBurnerMessageDetail,
   setCustomBurnerUsername,
@@ -104,7 +107,7 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
     setMobileView('list');
     setIsRefreshing(true);
     try {
-      const msgs = await checkBurnerMessages(target.token!);
+      const msgs = await checkBurnerMessages(target.token!, target.address);
       setMessages(msgs);
       if (msgs.length > 0) setSelectedMessage(msgs[0]);
     } catch (err: unknown) {
@@ -112,6 +115,22 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
     } finally {
       setIsRefreshing(false);
       setCountdown(15);
+    }
+  };
+
+  // Add a disposable @gmail.com mailbox
+  const handleAddGmailMailbox = async () => {
+    setIsInitializing(true);
+    setError(null);
+    try {
+      const newGmailMailbox = initDisposableGmailMailbox();
+      addMailboxToVault(newGmailMailbox);
+      setVault(getSavedMailboxVault());
+      await handleSwitchMailbox(newGmailMailbox);
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to initialize disposable Gmail inbox.');
+    } finally {
+      setIsInitializing(false);
     }
   };
 
@@ -137,7 +156,7 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
     if (!mailbox?.token) return;
     setIsRefreshing(true);
     try {
-      const newMsgs = await checkBurnerMessages(mailbox.token);
+      const newMsgs = await checkBurnerMessages(mailbox.token, mailbox.address);
       setMessages(newMsgs);
       setError(null);
 
@@ -181,7 +200,7 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
           setSelectedMessage(null);
           setMessageDetail(null);
           if (newMailbox.token) {
-            const initialMsgs = await checkBurnerMessages(newMailbox.token);
+            const initialMsgs = await checkBurnerMessages(newMailbox.token, newMailbox.address);
             if (!isCancelled) {
               setMessages(initialMsgs);
               if (initialMsgs.length > 0) {
@@ -261,7 +280,7 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
 
     if (mailbox?.token) {
       try {
-        const detail = await fetchBurnerMessageDetail(msg.id, mailbox.token);
+        const detail = await fetchBurnerMessageDetail(msg.id, mailbox.token, mailbox.address);
         setMessageDetail(detail);
       } catch (err) {
         console.warn('Failed to fetch detail:', err);
@@ -295,7 +314,7 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
     if (!mailbox?.token) return;
     setIsInitializing(true);
     try {
-      const updated = await setCustomBurnerUsername(newUser, mailbox.token);
+      const updated = await setCustomBurnerUsername(newUser, mailbox.token, newDomain);
       const customAddress = `${newUser}@${newDomain}`;
       const finalMailbox: BurnerMailbox = {
         ...updated,
@@ -304,6 +323,7 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
       setMailbox(finalMailbox);
       addMailboxToVault(finalMailbox);
       setVault(getSavedMailboxVault());
+      setIsInitializing(false);
       await refreshMessages();
     } catch (err: unknown) {
       setError((err as Error).message);
@@ -354,17 +374,26 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
             </span>
             {vault.map((v, idx) => {
               const isSelected = v.address === mailbox?.address;
+              const isGmail = isGmailAddress(v.address) || v.provider === 'gmail';
               return (
                 <div
                   key={v.address}
                   onClick={() => handleSwitchMailbox(v)}
                   className={`group px-3 py-1 rounded-xl text-xs font-mono font-medium flex items-center space-x-1.5 transition-all cursor-pointer select-none ${
                     isSelected
-                      ? 'bg-indigo-600 text-white shadow-xs'
+                      ? isGmail
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-indigo-600 text-white shadow-xs'
                       : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
                   }`}
                 >
+                  {isGmail && <Mail className="w-3 h-3 text-rose-200 shrink-0" />}
                   <span>#{idx + 1} {v.address.split('@')[0]}</span>
+                  {isGmail && (
+                    <span className="text-[9px] px-1 py-0.2 rounded bg-black/20 text-white font-sans font-bold">
+                      Gmail
+                    </span>
+                  )}
                   {vault.length > 1 && (
                     <button
                       type="button"
@@ -380,16 +409,29 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
             })}
 
             {vault.length < 5 && (
-              <button
-                type="button"
-                onClick={initializeNewMailbox}
-                disabled={isInitializing}
-                className="px-2.5 py-1 rounded-xl text-xs font-medium border border-dashed border-zinc-300 dark:border-zinc-700 hover:border-indigo-400 dark:hover:border-indigo-500 text-zinc-500 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center space-x-1 transition-colors cursor-pointer"
-                title="Create an additional simultaneous burner inbox"
-              >
-                <Plus className="w-3 h-3" />
-                <span>Add Inbox</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={initializeNewMailbox}
+                  disabled={isInitializing}
+                  className="px-2.5 py-1 rounded-xl text-xs font-medium border border-dashed border-zinc-300 dark:border-zinc-700 hover:border-indigo-400 dark:hover:border-indigo-500 text-zinc-500 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center space-x-1 transition-colors cursor-pointer"
+                  title="Create an additional simultaneous burner inbox"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Add Inbox</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleAddGmailMailbox}
+                  disabled={isInitializing}
+                  className="px-2.5 py-1 rounded-xl text-xs font-semibold border border-rose-200 dark:border-rose-900 bg-rose-50/70 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/60 flex items-center space-x-1.5 transition-colors cursor-pointer shadow-2xs"
+                  title="Create a disposable @gmail.com inbox for OTPs"
+                >
+                  <Mail className="w-3 h-3 text-red-500" />
+                  <span>+ Add Gmail</span>
+                </button>
+              </>
             )}
           </div>
         )}
@@ -400,11 +442,29 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
             <div className="flex items-center space-x-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center space-x-1.5">
                 <Flame className="w-3.5 h-3.5 text-amber-500" />
-                <span>Temporary Disposable Email</span>
+                <span>
+                  {mailbox && isGmailAddress(mailbox.address)
+                    ? 'Disposable Gmail Account (@gmail.com)'
+                    : 'Temporary Disposable Email'}
+                </span>
               </span>
-              <span className="text-[10px] px-2 py-0.2 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold border border-emerald-500/20 flex items-center space-x-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>Active &amp; Ready for OTP</span>
+              <span
+                className={`text-[10px] px-2 py-0.2 rounded-full font-semibold border flex items-center space-x-1 ${
+                  mailbox && isGmailAddress(mailbox.address)
+                    ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                    mailbox && isGmailAddress(mailbox.address) ? 'bg-rose-500' : 'bg-emerald-500'
+                  }`}
+                ></span>
+                <span>
+                  {mailbox && isGmailAddress(mailbox.address)
+                    ? 'Gmail Protected • Ready for OTP'
+                    : 'Active & Ready for OTP'}
+                </span>
               </span>
             </div>
 
