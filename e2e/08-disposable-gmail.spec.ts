@@ -34,12 +34,16 @@ test.describe('TempMailer — Disposable @gmail.com Inbox & OTP Reception', () =
     await expect(page.locator('text=Gmail Protected • Ready for OTP')).toBeVisible();
 
     // Verify incoming OTP message is parsed and visible in message list
-    const otpMessageRow = page.locator('text=749201 is your Google verification code').first();
+    const otpMessageRow = page.locator('text=/\\d{6} is your Google verification code/').first();
     await expect(otpMessageRow).toBeVisible({ timeout: 10000 });
 
-    // Row-level quick copy badge
-    const rowOtpBadge = page.locator('text=Code: 749201');
+    // Row-level quick copy badge with dynamic OTP
+    const rowOtpBadge = page.locator('text=/Code: \\d{6}/').first();
     await expect(rowOtpBadge).toBeVisible();
+
+    // Verify Sender Origin is clearly displayed on the OTP badge
+    const originBadge = page.locator('text=From: Google').first();
+    await expect(originBadge).toBeVisible();
 
     // Test row-level copy code button
     const copyOtpBtn = page.getByRole('button', { name: /Copy Code/i }).first();
@@ -47,14 +51,18 @@ test.describe('TempMailer — Disposable @gmail.com Inbox & OTP Reception', () =
     await expect(page.locator('text=Copied!')).toBeVisible();
 
     const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
-    expect(clipboardText).toBe('749201');
+    expect(clipboardText).toMatch(/^\d{6}$/);
 
     // Click to view message detail
     await otpMessageRow.click();
 
-    // Hero Action Card in message detail
-    const heroCode = page.locator('span.font-mono.tracking-wider').locator('text=749201');
+    // Hero Action Card in message detail with dynamic code and origin badge
+    const heroCode = page.locator('span.font-mono.tracking-wider').locator(`text=${clipboardText}`);
     await expect(heroCode).toBeVisible();
+
+    // Verify origin indicator inside Hero card
+    const heroOrigin = page.locator('div[class*="from-amber-500/10"]').getByText('Google', { exact: true });
+    await expect(heroOrigin).toBeVisible();
 
     // Switch back to Mailbox #1 (Guerrilla)
     const pill1 = page.locator('div[class*="group px-3 py-1"]').first();
@@ -65,6 +73,48 @@ test.describe('TempMailer — Disposable @gmail.com Inbox & OTP Reception', () =
     const pill2 = page.locator('div[class*="group px-3 py-1"]').nth(1);
     await pill2.click();
     await expect(addressDisplay).toHaveText(gmailAddress);
+  });
+
+  test('generates fresh, unique non-repeating OTP codes and displays origin when Send Test OTP is clicked', async ({ page }) => {
+    await page.goto('/');
+
+    // Wait for mailbox to be ready
+    const addressDisplay = page.locator('span.font-mono.font-bold').first();
+    await expect(addressDisplay).toBeVisible({ timeout: 10000 });
+
+    // Click "+ Add Gmail"
+    const addGmailBtn = page.getByRole('button', { name: /\+ Add Gmail/i });
+    await addGmailBtn.click();
+    await expect(addressDisplay).toContainText('@gmail.com');
+
+    // Get the initial OTP code from the seeded messages
+    const initialBadge = page.locator('text=/Code: \\d{6}/').first();
+    await expect(initialBadge).toBeVisible({ timeout: 10000 });
+    const initialBadgeText = await initialBadge.innerText();
+
+    // Click "Send Test OTP"
+    const sendTestOtpBtn = page.getByRole('button', { name: /Send Test OTP|Test OTP/i });
+    await expect(sendTestOtpBtn).toBeVisible();
+    await sendTestOtpBtn.click();
+
+    // An incoming message should appear at the top with a new OTP
+    const latestBadge = page.locator('text=/Code: \\d{6}/').first();
+    await expect(latestBadge).toBeVisible();
+    const latestBadgeText = await latestBadge.innerText();
+
+    // The new OTP code must NOT be the same as the previous one
+    expect(latestBadgeText).not.toBe(initialBadgeText);
+
+    // The new message should show origin info
+    const latestRow = page.locator('div[class*="divide-y"] > div').first();
+    await expect(latestRow.locator('text=/From: (Google|Netflix|Discord|Spotify|Amazon|GitHub|Instagram|Steam|OpenAI|Telegram|Service)/')).toBeVisible();
+
+    // Click Send Test OTP again to verify a second fresh code is received
+    await sendTestOtpBtn.click();
+    const secondBadge = page.locator('text=/Code: \\d{6}/').first();
+    const secondBadgeText = await secondBadge.innerText();
+    expect(secondBadgeText).not.toBe(latestBadgeText);
+    expect(secondBadgeText).not.toBe(initialBadgeText);
   });
 
   test('customizes username and selects @gmail.com via Change Address modal', async ({ page }) => {
@@ -99,3 +149,4 @@ test.describe('TempMailer — Disposable @gmail.com Inbox & OTP Reception', () =
     await expect(page.locator('text=Gmail Protected • Ready for OTP')).toBeVisible();
   });
 });
+

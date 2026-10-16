@@ -13,6 +13,7 @@ import {
   BellOff,
   Plus,
   Mail,
+  Zap,
 } from 'lucide-react';
 import {
   playEmailChime,
@@ -34,6 +35,7 @@ import {
   getSavedMailboxVault,
   addMailboxToVault,
   removeMailboxFromVault,
+  simulateBurnerOtp,
   type RawEmailDetail,
 } from '../../services/burnerMailApi';
 import { MessageList } from './MessageList';
@@ -148,6 +150,42 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
       } else {
         void initializeNewMailbox();
       }
+    }
+  };
+
+  const [isSimulating, setIsSimulating] = useState(false);
+
+  // Instantly simulate a fresh incoming OTP email with unique randomized code and rotating service
+  const handleSimulateOtp = (serviceName?: string) => {
+    if (!mailbox) return;
+    setIsSimulating(true);
+    try {
+      const newMsg = simulateBurnerOtp(mailbox, serviceName);
+      setMessages((prev) => [newMsg, ...prev]);
+      setSelectedMessage(newMsg);
+      setMessageDetail({
+        mail_id: newMsg.id,
+        mail_from: newMsg.from,
+        mail_subject: newMsg.subject,
+        mail_date: newMsg.date,
+        mail_body: newMsg.htmlBody || `<p>${newMsg.bodyPreview}</p>`,
+      });
+      prevMessageCountRef.current += 1;
+      if (soundEnabled) {
+        playEmailChime();
+      }
+      if (typeof document !== 'undefined' && document.hidden) {
+        startTitleAlert(messages.length + 1);
+        showDesktopNotification(
+          'New OTP / Verification Code',
+          `${newMsg.subject} (From: ${newMsg.from})`
+        );
+      }
+      if (onUnreadChange) {
+        onUnreadChange(messages.length + 1);
+      }
+    } finally {
+      setIsSimulating(false);
     }
   };
 
@@ -548,6 +586,18 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
               title={soundEnabled ? 'Email alert chime: ON (Click to mute)' : 'Email alert chime: OFF (Click to enable)'}
             >
               {soundEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+            </button>
+
+            {/* Quick Test / Simulate Incoming OTP */}
+            <button
+              onClick={() => handleSimulateOtp()}
+              disabled={isInitializing || !mailbox?.address || isSimulating}
+              className="px-3 py-2.5 rounded-xl border border-amber-300 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-colors flex items-center space-x-1.5 cursor-pointer text-xs font-semibold shadow-2xs"
+              title="Instantly generate and receive a fresh randomized OTP verification code"
+            >
+              <Zap className={`w-3.5 h-3.5 text-amber-500 fill-amber-500 ${isSimulating ? 'animate-bounce' : ''}`} />
+              <span className="hidden sm:inline">Send Test OTP</span>
+              <span className="sm:hidden">Test OTP</span>
             </button>
 
             {/* Refresh with countdown indicator */}

@@ -4,9 +4,12 @@ import {
   fetchDisposableGmailMessageDetail,
   initDisposableGmailMailbox,
   isGmailAddress,
+  simulateIncomingOtp,
+  OTP_SERVICE_TEMPLATES,
+  generateRandomOtp,
 } from './gmailApi';
 
-export { initDisposableGmailMailbox, isGmailAddress };
+export { initDisposableGmailMailbox, isGmailAddress, simulateIncomingOtp };
 
 const BASE_URL = 'https://api.guerrillamail.com/ajax.php';
 const TIMEOUT_MS = 8000;
@@ -102,7 +105,7 @@ export async function checkBurnerMessages(token: string, address?: string): Prom
   const data = await response.json();
   const list: RawEmailItem[] = data.list || [];
 
-  return list.map((item) => ({
+  const remote = list.map((item) => ({
     id: String(item.mail_id),
     from: item.mail_from,
     subject: item.mail_subject || '(No subject)',
@@ -110,6 +113,22 @@ export async function checkBurnerMessages(token: string, address?: string): Prom
     bodyPreview: item.mail_excerpt || '',
     isRead: item.mail_read === 1,
   }));
+
+  // Include any locally simulated test OTP messages for this address
+  if (address && typeof window !== 'undefined' && window.sessionStorage) {
+    const simKey = `tempmailer_sim_${address.toLowerCase()}`;
+    const rawSim = sessionStorage.getItem(simKey);
+    if (rawSim) {
+      try {
+        const simList: BurnerMessage[] = JSON.parse(rawSim);
+        return [...simList, ...remote];
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  return remote;
 }
 
 /**
@@ -122,6 +141,29 @@ export async function fetchBurnerMessageDetail(
 ): Promise<RawEmailDetail> {
   if (token?.startsWith('gmail_') || (address && isGmailAddress(address))) {
     return fetchDisposableGmailMessageDetail(mailId, address || '');
+  }
+
+  // Check if it was a simulated OTP message
+  if (address && typeof window !== 'undefined' && window.sessionStorage) {
+    const simKey = `tempmailer_sim_${address.toLowerCase()}`;
+    const rawSim = sessionStorage.getItem(simKey);
+    if (rawSim) {
+      try {
+        const simList: BurnerMessage[] = JSON.parse(rawSim);
+        const found = simList.find((m) => m.id === mailId);
+        if (found) {
+          return {
+            mail_id: found.id,
+            mail_from: found.from,
+            mail_subject: found.subject,
+            mail_date: found.date,
+            mail_body: found.htmlBody || `<p>${found.bodyPreview}</p>`,
+          };
+        }
+      } catch {
+        // ignore
+      }
+    }
   }
 
   const url = `${BASE_URL}?f=fetch_email&email_id=${encodeURIComponent(
@@ -138,6 +180,47 @@ export async function fetchBurnerMessageDetail(
 
   const data: RawEmailDetail = await response.json();
   return data;
+}
+
+/**
+ * Simulates a fresh incoming OTP message for any disposable mailbox
+ */
+export function simulateBurnerOtp(mailbox: BurnerMailbox, serviceName?: string): BurnerMessage {
+  if (isGmailAddress(mailbox.address) || mailbox.token?.startsWith('gmail_')) {
+    return simulateIncomingOtp(mailbox.address, serviceName);
+  }
+
+  let template = serviceName
+    ? OTP_SERVICE_TEMPLATES.find((t) => t.service.toLowerCase() === serviceName.toLowerCase())
+    : null;
+
+  if (!template) {
+    template = OTP_SERVICE_TEMPLATES[Math.floor(Math.random() * OTP_SERVICE_TEMPLATES.length)];
+  }
+
+  const freshOtp = generateRandomOtp();
+  const subject = template.createSubject(freshOtp);
+  const bodyPreview = template.createBodyPreview(freshOtp, mailbox.address);
+  const htmlBody = template.createHtml(freshOtp, mailbox.address);
+
+  const simMsg: BurnerMessage = {
+    id: `sim-otp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    from: template.from,
+    subject,
+    date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    bodyPreview,
+    htmlBody,
+    isRead: false,
+  };
+
+  if (typeof window !== 'undefined' && window.sessionStorage) {
+    const simKey = `tempmailer_sim_${mailbox.address.toLowerCase()}`;
+    const prevRaw = sessionStorage.getItem(simKey);
+    const prevList: BurnerMessage[] = prevRaw ? JSON.parse(prevRaw) : [];
+    sessionStorage.setItem(simKey, JSON.stringify([simMsg, ...prevList]));
+  }
+
+  return simMsg;
 }
 
 /**

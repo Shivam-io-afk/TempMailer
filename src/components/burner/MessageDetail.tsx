@@ -31,13 +31,14 @@ export const MessageDetail: React.FC<MessageDetailProps> = ({
   const [viewMode, setViewMode] = useState<'html' | 'text'>('html');
   const [copiedCode, setCopiedCode] = useState(false);
 
-  // Extract verification OTP code and activation URL
+  // Extract verification OTP code, activation URL, and sender origin
   const verification = useMemo(() => {
-    if (!message) return { code: null, link: null };
+    if (!message) return { code: null, link: null, service: null };
     return extractVerificationData(
       message.subject,
       message.bodyPreview,
-      detail?.mail_body
+      detail?.mail_body,
+      message.from
     );
   }, [message, detail]);
 
@@ -195,6 +196,18 @@ export const MessageDetail: React.FC<MessageDetailProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {verification.service && (
+              <div className="flex items-center space-x-1.5 bg-white dark:bg-zinc-950 px-3.5 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xs">
+                <span className="text-xs text-zinc-500 font-medium">From:</span>
+                <span className="text-xs font-bold text-amber-700 dark:text-amber-400">
+                  {verification.service}
+                </span>
+                <span className="text-[11px] text-zinc-400 font-mono truncate max-w-[160px]">
+                  ({message.from})
+                </span>
+              </div>
+            )}
+
             {verification.code && (
               <div className="flex items-center space-x-2 bg-white dark:bg-zinc-950 px-3.5 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xs">
                 <span className="text-xs text-zinc-500 font-medium">OTP Code:</span>
