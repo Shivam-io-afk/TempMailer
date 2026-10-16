@@ -1,6 +1,7 @@
-import React from 'react';
-import { Clock, Radio, Inbox } from 'lucide-react';
+import React, { useState } from 'react';
+import { Clock, Radio, Inbox, KeyRound, Copy, Check } from 'lucide-react';
 import type { BurnerMessage } from '../../types';
+import { extractVerificationData } from '../../utils/otpExtractor';
 
 interface MessageListProps {
   messages: BurnerMessage[];
@@ -15,6 +16,17 @@ export const MessageList: React.FC<MessageListProps> = ({
   onSelectMessage,
   isPolling,
 }) => {
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+
+  const handleCopyOtp = (e: React.MouseEvent, code: string, id: string) => {
+    e.stopPropagation();
+    void navigator.clipboard.writeText(code);
+    setCopiedCodeId(id);
+    setTimeout(() => {
+      setCopiedCodeId(null);
+    }, 2000);
+  };
+
   if (messages.length === 0) {
     return (
       <div className="h-full min-h-[320px] flex flex-col items-center justify-center p-8 text-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl">
@@ -31,10 +43,10 @@ export const MessageList: React.FC<MessageListProps> = ({
         </div>
 
         <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
-          Waiting for incoming emails...
+          Waiting for incoming OTP or email...
         </h3>
         <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 max-w-xs leading-relaxed">
-          Send an email or verification code to your temporary address. It will appear here automatically within seconds.
+          Sign up on any site with your temporary address. Your verification code will appear here with instant auto-extraction.
         </p>
 
         <div className="mt-4 inline-flex items-center space-x-1.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1 rounded-full border border-emerald-500/20">
@@ -62,6 +74,8 @@ export const MessageList: React.FC<MessageListProps> = ({
       <div className="divide-y divide-zinc-100 dark:divide-zinc-800/80 overflow-y-auto flex-1 max-h-[550px]">
         {messages.map((msg) => {
           const isSelected = selectedId === msg.id;
+          const { code } = extractVerificationData(msg.subject, msg.bodyPreview);
+
           return (
             <div
               key={msg.id}
@@ -94,6 +108,35 @@ export const MessageList: React.FC<MessageListProps> = ({
               <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 line-clamp-1">
                 {msg.bodyPreview}
               </p>
+
+              {/* Instant Quick-Copy OTP Badge directly on row */}
+              {code && (
+                <div className="mt-2 flex items-center justify-between bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-900/60 rounded-xl px-2.5 py-1.5">
+                  <div className="flex items-center space-x-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span className="text-[11px] font-mono font-bold text-amber-900 dark:text-amber-200">
+                      Code: {code}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => handleCopyOtp(e, code, msg.id)}
+                    className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-600 hover:bg-amber-500 text-white flex items-center space-x-1 transition-colors cursor-pointer"
+                  >
+                    {copiedCodeId === msg.id ? (
+                      <>
+                        <Check className="w-3 h-3" />
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        <span>Copy Code</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}

@@ -29,19 +29,19 @@ import {
   forgetBurnerMailbox,
   getSavedBurnerMailbox,
   getSavedMailboxVault,
+  addMailboxToVault,
   removeMailboxFromVault,
   type RawEmailDetail,
 } from '../../services/burnerMailApi';
 import { MessageList } from './MessageList';
 import { MessageDetail } from './MessageDetail';
-import { DomainAdvisor } from './DomainAdvisor';
+import { ChangeAddressModal } from './ChangeAddressModal';
 
 interface BurnerInboxProps {
   onUnreadChange?: (count: number) => void;
-  onSwitchToGmailMatrix?: () => void;
 }
 
-export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange, onSwitchToGmailMatrix }) => {
+export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
   const [mailbox, setMailbox] = useState<BurnerMailbox | null>(() => getSavedBurnerMailbox());
   const [messages, setMessages] = useState<BurnerMessage[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<BurnerMessage | null>(null);
@@ -56,8 +56,7 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange, onSwit
   // Auto-refresh countdown
   const [countdown, setCountdown] = useState(15);
   const [showQrModal, setShowQrModal] = useState(false);
-  const [isEditingUser, setIsEditingUser] = useState(false);
-  const [customUserInput, setCustomUserInput] = useState('');
+  const [isChangeModalOpen, setIsChangeModalOpen] = useState(false);
 
   // Mobile view state: 'list' | 'detail'
   const [mobileView, setMobileView] = useState<'list' | 'detail'>('list');
@@ -148,7 +147,7 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange, onSwit
         if (typeof document !== 'undefined' && document.hidden) {
           startTitleAlert(newMsgs.length);
           showDesktopNotification(
-            'New Email Received',
+            'New OTP / Email Received',
             newMsgs[0]?.subject || 'Check your temporary inbox'
           );
         }
@@ -159,7 +158,6 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange, onSwit
       const unread = newMsgs.filter((m) => !m.isRead).length;
       if (onUnreadChange) onUnreadChange(unread);
     } catch (err: unknown) {
-      // Don't show full blocking error for background refresh, just keep previous state
       console.warn('Background refresh error:', (err as Error).message);
     } finally {
       setIsRefreshing(false);
@@ -252,7 +250,6 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange, onSwit
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback
       const textArea = document.createElement('textarea');
       textArea.value = mailbox.address;
       document.body.appendChild(textArea);
@@ -264,16 +261,20 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange, onSwit
     }
   };
 
-  // Custom username submission
-  const handleSetCustomUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!mailbox?.token || !customUserInput.trim()) return;
+  // Custom address / domain change (like temp-mail.org/en/change)
+  const handleChangeAddress = async (newUser: string, newDomain: string) => {
+    if (!mailbox?.token) return;
     setIsInitializing(true);
     try {
-      const updated = await setCustomBurnerUsername(customUserInput, mailbox.token);
-      setMailbox(updated);
-      setIsEditingUser(false);
-      setCustomUserInput('');
+      const updated = await setCustomBurnerUsername(newUser, mailbox.token);
+      const customAddress = `${newUser}@${newDomain}`;
+      const finalMailbox: BurnerMailbox = {
+        ...updated,
+        address: customAddress,
+      };
+      setMailbox(finalMailbox);
+      addMailboxToVault(finalMailbox);
+      setVault(getSavedMailboxVault());
       await refreshMessages();
     } catch (err: unknown) {
       setError((err as Error).message);
@@ -348,48 +349,25 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange, onSwit
             <div className="flex items-center space-x-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center space-x-1.5">
                 <Flame className="w-3.5 h-3.5 text-amber-500" />
-                <span>Your Disposable Burner Email Address</span>
+                <span>Temporary Disposable Email</span>
               </span>
-              <span className="text-[10px] px-2 py-0.2 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold border border-emerald-500/20">
-                Active &amp; Listening
+              <span className="text-[10px] px-2 py-0.2 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold border border-emerald-500/20 flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Active &amp; Ready for OTP</span>
               </span>
             </div>
 
             {isInitializing ? (
               <div className="h-9 bg-zinc-200 dark:bg-zinc-800 rounded-xl w-72 animate-pulse"></div>
-            ) : isEditingUser ? (
-              <form onSubmit={handleSetCustomUser} className="flex items-center space-x-2 pt-1">
-                <input
-                  type="text"
-                  value={customUserInput}
-                  onChange={(e) => setCustomUserInput(e.target.value)}
-                  placeholder="Enter custom username"
-                  className="px-3 py-1.5 text-sm font-mono rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                  autoFocus
-                />
-                <button
-                  type="submit"
-                  className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg cursor-pointer"
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsEditingUser(false)}
-                  className="px-2 py-1.5 text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </form>
             ) : (
               <div className="flex items-center space-x-3">
                 <span className="text-lg sm:text-xl md:text-2xl font-mono font-bold text-zinc-900 dark:text-zinc-50 tracking-tight truncate select-all">
                   {mailbox?.address || 'Generating address...'}
                 </span>
                 <button
-                  onClick={() => setIsEditingUser(true)}
-                  className="p-1 text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-                  title="Change address prefix"
+                  onClick={() => setIsChangeModalOpen(true)}
+                  className="p-1.5 text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                  title="Change address username or domain"
                 >
                   <Edit2 className="w-4 h-4" />
                 </button>
@@ -411,6 +389,17 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange, onSwit
             >
               {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               <span>{copied ? 'Copied to Clipboard!' : 'Copy Address'}</span>
+            </button>
+
+            {/* Change Address (temp-mail.org/en/change style) */}
+            <button
+              onClick={() => setIsChangeModalOpen(true)}
+              disabled={!mailbox?.token}
+              className="px-3.5 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-750 transition-colors flex items-center space-x-1.5 cursor-pointer text-xs font-semibold"
+              title="Change address username and domain"
+            >
+              <Edit2 className="w-4 h-4 text-indigo-500" />
+              <span>Change</span>
             </button>
 
             {/* QR Code trigger */}
@@ -468,19 +457,13 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange, onSwit
             </div>
             <button
               onClick={initializeNewMailbox}
-              className="font-semibold underline hover:no-underline ml-3"
+              className="font-semibold underline hover:no-underline ml-3 cursor-pointer"
             >
               Retry
             </button>
           </div>
         )}
       </div>
-
-      {/* Deliverability Advisor */}
-      <DomainAdvisor
-        currentDomain={mailbox?.address ? mailbox.address.split('@')[1] : 'guerrillamail.com'}
-        onSwitchToGmailMatrix={onSwitchToGmailMatrix}
-      />
 
       {/* Main Mailbox Content: Split View */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start min-h-[460px]">
@@ -513,13 +496,21 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange, onSwit
         </div>
       </div>
 
+      {/* Change Address Modal (temp-mail.org/en/change style) */}
+      <ChangeAddressModal
+        isOpen={isChangeModalOpen}
+        onClose={() => setIsChangeModalOpen(false)}
+        currentAddress={mailbox?.address || ''}
+        onSave={handleChangeAddress}
+      />
+
       {/* QR Code Modal for Mobile Quick Test */}
       {showQrModal && mailbox?.address && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl relative">
             <button
               onClick={() => setShowQrModal(false)}
-              className="absolute top-4 right-4 p-1 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+              className="absolute top-4 right-4 p-1 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>

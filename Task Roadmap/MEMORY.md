@@ -2,8 +2,8 @@
 Mode: LIGHTWEIGHT | Phase: 5 (Deploy & Release) | Current task: Production Ready & Verified | Blockers: None
 
 ## Decisions
-- [2026-10-16] Product Architecture: Hybrid Dual-Engine (Gmail Dot/Tag Generator + Live Disposable Burner Inbox) to satisfy both real-Gmail power users and anonymous throwaway use cases — Accepted
-- [2026-10-16] Client-Side Privacy: Dot matrix and plus alias generation runs 100% in browser memory; zero emails stored or transmitted to custom servers — Accepted
+- [2026-10-16] Pivoted product focus exclusively to high-speed temporary email for OTPs & verification ("TempMailer", inspired by temp-mail.org/en/change & tempmail.plus). Removed Gmail dot permutation generator and filter export. Retained and elevated all key differentiators: Instant OTP & Link Auto-Extractor (with row-level quick copy), Zero-Asset Audio Chime & Tab Flasher, Full Signup Companion Toolkit (crypto password & fake identity generator), Multi-Mailbox Vault Switcher (up to 5 inboxes), and Address Customization & Domain Changer — Accepted
+- [2026-10-16] Client-Side Privacy: 100% in-browser memory & native CORS; zero user data or emails logged or transmitted to custom servers — Accepted
 - [2026-10-16] Tech Stack: Vite + React 19 + TypeScript + Tailwind CSS v4 + Lucide Icons + DOMPurify for fast static hosting compatibility — Accepted
 - [2026-10-16] Disposable Mail Provider: Selected GuerrillaMail REST API following empirical testing verifying native wildcard CORS support (`*`) and active session lifecycle without backend proxy requirement — Accepted
 
