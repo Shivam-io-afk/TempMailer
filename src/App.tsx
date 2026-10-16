@@ -22,7 +22,10 @@ function AppContent() {
         )}
 
         {activeTab === 'burner-inbox' && (
-          <BurnerInbox onUnreadChange={setUnreadCount} />
+          <BurnerInbox
+            onUnreadChange={setUnreadCount}
+            onSwitchToGmailMatrix={() => setActiveTab('gmail-matrix')}
+          />
         )}
 
         {activeTab === 'guide' && (

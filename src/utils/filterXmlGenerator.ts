@@ -101,3 +101,4 @@ export function downloadFilterXml(xmlContent: string, fileName = 'mail-filters.x
   link.click();
   URL.revokeObjectURL(url);
 }
+

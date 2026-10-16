@@ -39,3 +39,4 @@ assert(xml.includes("<apps:property name='neverSpam' value='true'/>"), 'Contains
 assert(xml.includes('alex.dev@gmail.com') && xml.includes('alexdev+trial@gmail.com'), 'Contains target alias email addresses in hasTheWord filter');
 
 console.log('--- All Filter XML Tests Passed! ---');
+

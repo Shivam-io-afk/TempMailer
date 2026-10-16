@@ -1,8 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import DOMPurify from 'dompurify';
-import { ShieldCheck, Calendar, User, ArrowLeft, Eye } from 'lucide-react';
+import {
+  ShieldCheck,
+  Calendar,
+  User,
+  ArrowLeft,
+  Eye,
+  Zap,
+  Copy,
+  Check,
+  ExternalLink,
+} from 'lucide-react';
 import type { BurnerMessage } from '../../types';
 import type { RawEmailDetail } from '../../services/burnerMailApi';
+import { extractVerificationData } from '../../utils/otpExtractor';
 
 interface MessageDetailProps {
   message: BurnerMessage | null;
@@ -18,6 +29,34 @@ export const MessageDetail: React.FC<MessageDetailProps> = ({
   onBack,
 }) => {
   const [viewMode, setViewMode] = useState<'html' | 'text'>('html');
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  // Extract verification OTP code and activation URL
+  const verification = useMemo(() => {
+    if (!message) return { code: null, link: null };
+    return extractVerificationData(
+      message.subject,
+      message.bodyPreview,
+      detail?.mail_body
+    );
+  }, [message, detail]);
+
+  const handleCopyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    } catch {
+      const textArea = document.createElement('textarea');
+      textArea.value = code;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    }
+  };
 
   if (!message) {
     return (
@@ -121,6 +160,56 @@ export const MessageDetail: React.FC<MessageDetailProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Extracted Verification Card (Hero Action) */}
+      {(verification.code || verification.link) && (
+        <div className="m-4 p-4 rounded-xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-violet-500/10 border border-amber-500/30 dark:border-amber-400/20 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+              <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
+              <span>Instant Verification Action Detected</span>
+            </div>
+            <span className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono">
+              Auto-Parsed
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {verification.code && (
+              <div className="flex items-center space-x-2 bg-white dark:bg-zinc-950 px-3.5 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xs">
+                <span className="text-xs text-zinc-500 font-medium">OTP Code:</span>
+                <span className="font-mono text-base font-extrabold text-indigo-600 dark:text-indigo-400 tracking-wider">
+                  {verification.code}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopyCode(verification.code!)}
+                  className={`ml-1 px-2.5 py-1 text-xs font-semibold rounded-lg flex items-center space-x-1 transition-all cursor-pointer ${
+                    copiedCode
+                      ? 'bg-emerald-500 text-white'
+                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950 dark:hover:text-indigo-400'
+                  }`}
+                >
+                  {copiedCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedCode ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+            )}
+
+            {verification.link && (
+              <a
+                href={verification.link}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm flex items-center space-x-1.5 transition-colors cursor-pointer"
+              >
+                <span>Open Verification Link</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Detail Body */}
       <div className="p-4 sm:p-6 overflow-y-auto flex-1 min-h-[240px]">

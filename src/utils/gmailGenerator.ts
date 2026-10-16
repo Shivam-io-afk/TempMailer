@@ -382,3 +382,4 @@ export function exportToCsv(emails: GeneratedEmail[]): string {
     .join('\r\n');
   return header + rows;
 }
+

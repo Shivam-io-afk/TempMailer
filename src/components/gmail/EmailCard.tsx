@@ -84,3 +84,4 @@ export const EmailCard: React.FC<EmailCardProps> = ({ email, index }) => {
     </div>
   );
 };
+

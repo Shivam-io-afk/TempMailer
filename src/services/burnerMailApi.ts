@@ -48,10 +48,8 @@ export async function initBurnerMailbox(): Promise<BurnerMailbox> {
     expiresAt: Date.now() + 60 * 60 * 1000, // 1 hour lifetime
   };
 
-  // Cache to session storage if running in browser
-  if (typeof window !== 'undefined' && window.sessionStorage) {
-    sessionStorage.setItem('tempgmail_burner_session', JSON.stringify(mailbox));
-  }
+  // Cache to session storage and vault if running in browser
+  addMailboxToVault(mailbox);
   return mailbox;
 }
 
@@ -137,9 +135,7 @@ export async function setCustomBurnerUsername(
     expiresAt: Date.now() + 60 * 60 * 1000,
   };
 
-  if (typeof window !== 'undefined' && window.sessionStorage) {
-    sessionStorage.setItem('tempgmail_burner_session', JSON.stringify(mailbox));
-  }
+  addMailboxToVault(mailbox);
   return mailbox;
 }
 
@@ -163,17 +159,60 @@ export async function forgetBurnerMailbox(address: string, token: string): Promi
  * Retrieves cached active mailbox session if still valid
  */
 export function getSavedBurnerMailbox(): BurnerMailbox | null {
+  const vault = getSavedMailboxVault();
+  return vault.length > 0 ? vault[0] : null;
+}
+
+const VAULT_STORAGE_KEY = 'tempgmail_burner_vault';
+
+/**
+ * Retrieves all stored active mailboxes from the vault
+ */
+export function getSavedMailboxVault(): BurnerMailbox[] {
   try {
-    if (typeof window === 'undefined' || !window.sessionStorage) return null;
-    const raw = sessionStorage.getItem('tempgmail_burner_session');
-    if (!raw) return null;
-    const mailbox: BurnerMailbox = JSON.parse(raw);
-    if (mailbox.expiresAt && Date.now() > mailbox.expiresAt) {
-      sessionStorage.removeItem('tempgmail_burner_session');
-      return null;
+    if (typeof window === 'undefined' || !window.sessionStorage) return [];
+    const raw = sessionStorage.getItem(VAULT_STORAGE_KEY);
+    if (!raw) return [];
+    const list: BurnerMailbox[] = JSON.parse(raw);
+    const valid = list.filter((m) => !m.expiresAt || Date.now() < m.expiresAt);
+    if (valid.length !== list.length) {
+      sessionStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(valid));
     }
-    return mailbox;
+    return valid;
   } catch {
-    return null;
+    return [];
   }
+}
+
+/**
+ * Saves mailbox vault list to sessionStorage (capped at 5)
+ */
+export function saveMailboxVault(vault: BurnerMailbox[]): void {
+  try {
+    if (typeof window === 'undefined' || !window.sessionStorage) return;
+    sessionStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(vault.slice(0, 5)));
+  } catch (err) {
+    console.warn('Failed to save mailbox vault:', err);
+  }
+}
+
+/**
+ * Adds or updates a mailbox in the vault
+ */
+export function addMailboxToVault(mailbox: BurnerMailbox): BurnerMailbox[] {
+  const existing = getSavedMailboxVault();
+  const filtered = existing.filter((m) => m.address !== mailbox.address);
+  const updated = [mailbox, ...filtered].slice(0, 5);
+  saveMailboxVault(updated);
+  return updated;
+}
+
+/**
+ * Removes a mailbox from the vault
+ */
+export function removeMailboxFromVault(address: string): BurnerMailbox[] {
+  const existing = getSavedMailboxVault();
+  const updated = existing.filter((m) => m.address !== address);
+  saveMailboxVault(updated);
+  return updated;
 }

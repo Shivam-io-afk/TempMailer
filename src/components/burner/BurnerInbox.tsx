@@ -9,7 +9,17 @@ import {
   Flame,
   AlertTriangle,
   X,
+  Bell,
+  BellOff,
+  Plus,
 } from 'lucide-react';
+import {
+  playEmailChime,
+  startTitleAlert,
+  stopTitleAlert,
+  showDesktopNotification,
+  requestNotificationPermission,
+} from '../../utils/soundAlert';
 import type { BurnerMailbox, BurnerMessage } from '../../types';
 import {
   initBurnerMailbox,
@@ -18,16 +28,20 @@ import {
   setCustomBurnerUsername,
   forgetBurnerMailbox,
   getSavedBurnerMailbox,
+  getSavedMailboxVault,
+  removeMailboxFromVault,
   type RawEmailDetail,
 } from '../../services/burnerMailApi';
 import { MessageList } from './MessageList';
 import { MessageDetail } from './MessageDetail';
+import { DomainAdvisor } from './DomainAdvisor';
 
 interface BurnerInboxProps {
   onUnreadChange?: (count: number) => void;
+  onSwitchToGmailMatrix?: () => void;
 }
 
-export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
+export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange, onSwitchToGmailMatrix }) => {
   const [mailbox, setMailbox] = useState<BurnerMailbox | null>(() => getSavedBurnerMailbox());
   const [messages, setMessages] = useState<BurnerMessage[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<BurnerMessage | null>(null);
@@ -48,8 +62,13 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
   // Mobile view state: 'list' | 'detail'
   const [mobileView, setMobileView] = useState<'list' | 'detail'>('list');
 
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('tempgmail_sound') !== 'false';
+  });
+  const prevMessageCountRef = useRef<number>(0);
   const countdownTimerRef = useRef<number | null>(null);
   const hasInitializedRef = useRef(false);
+  const [vault, setVault] = useState<BurnerMailbox[]>(() => getSavedMailboxVault());
 
   // Initialize mailbox if none exists
   const initializeNewMailbox = useCallback(async () => {
@@ -58,6 +77,7 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
     try {
       const newMailbox = await initBurnerMailbox();
       setMailbox(newMailbox);
+      setVault(getSavedMailboxVault());
       setMessages([]);
       setSelectedMessage(null);
       setMessageDetail(null);
@@ -75,6 +95,42 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
     }
   }, []);
 
+  // Switch active mailbox from vault
+  const handleSwitchMailbox = async (target: BurnerMailbox) => {
+    if (target.address === mailbox?.address) return;
+    setMailbox(target);
+    setSelectedMessage(null);
+    setMessageDetail(null);
+    setIsRefreshing(true);
+    try {
+      const msgs = await checkBurnerMessages(target.token!);
+      setMessages(msgs);
+      if (msgs.length > 0) setSelectedMessage(msgs[0]);
+    } catch (err: unknown) {
+      setError((err as Error).message);
+    } finally {
+      setIsRefreshing(false);
+      setCountdown(15);
+    }
+  };
+
+  // Remove specific mailbox from vault
+  const handleRemoveVaultMailbox = async (e: React.MouseEvent, addr: string, tok?: string) => {
+    e.stopPropagation();
+    if (tok) {
+      void forgetBurnerMailbox(addr, tok);
+    }
+    const updated = removeMailboxFromVault(addr);
+    setVault(updated);
+    if (mailbox?.address === addr) {
+      if (updated.length > 0) {
+        void handleSwitchMailbox(updated[0]);
+      } else {
+        void initializeNewMailbox();
+      }
+    }
+  };
+
   // Poll for messages
   const refreshMessages = useCallback(async () => {
     if (!mailbox?.token) return;
@@ -83,6 +139,21 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
       const newMsgs = await checkBurnerMessages(mailbox.token);
       setMessages(newMsgs);
       setError(null);
+
+      // Check for newly arrived messages
+      if (newMsgs.length > prevMessageCountRef.current && prevMessageCountRef.current > 0) {
+        if (soundEnabled) {
+          playEmailChime();
+        }
+        if (typeof document !== 'undefined' && document.hidden) {
+          startTitleAlert(newMsgs.length);
+          showDesktopNotification(
+            'New Email Received',
+            newMsgs[0]?.subject || 'Check your temporary inbox'
+          );
+        }
+      }
+      prevMessageCountRef.current = newMsgs.length;
 
       // Notify parent of unread
       const unread = newMsgs.filter((m) => !m.isRead).length;
@@ -94,18 +165,22 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
       setIsRefreshing(false);
       setCountdown(15);
     }
-  }, [mailbox, onUnreadChange]);
+  }, [mailbox, onUnreadChange, soundEnabled]);
 
   // Initial setup
   useEffect(() => {
     if (hasInitializedRef.current) return;
     hasInitializedRef.current = true;
 
-    if (!mailbox) {
-      void initializeNewMailbox();
-    } else {
-      void refreshMessages();
-    }
+    const timer = setTimeout(() => {
+      if (!mailbox) {
+        void initializeNewMailbox();
+      } else {
+        void refreshMessages();
+      }
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, [mailbox, initializeNewMailbox, refreshMessages]);
 
   // 15-second countdown timer for auto-refresh
@@ -124,6 +199,32 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     };
   }, [refreshMessages]);
+
+  // Clear title alert when user returns to tab
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (typeof document !== 'undefined' && !document.hidden) {
+        stopTitleAlert();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
+      stopTitleAlert();
+    };
+  }, []);
+
+  const handleToggleSound = async () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    localStorage.setItem('tempgmail_sound', String(next));
+    if (next) {
+      playEmailChime();
+      await requestNotificationPermission();
+    }
+  };
 
   // Fetch full message detail when selected
   const handleSelectMessage = async (msg: BurnerMessage) => {
@@ -192,7 +293,55 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
   return (
     <div className="space-y-6">
       {/* Top Mailbox Bar */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 sm:p-6 shadow-sm">
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
+        {/* Multi-Mailbox Vault Switcher */}
+        {vault.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-zinc-100 dark:border-zinc-800">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 mr-1">
+              Active Inboxes ({vault.length}/5):
+            </span>
+            {vault.map((v, idx) => {
+              const isSelected = v.address === mailbox?.address;
+              return (
+                <div
+                  key={v.address}
+                  onClick={() => handleSwitchMailbox(v)}
+                  className={`group px-3 py-1 rounded-xl text-xs font-mono font-medium flex items-center space-x-1.5 transition-all cursor-pointer select-none ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                  }`}
+                >
+                  <span>#{idx + 1} {v.address.split('@')[0]}</span>
+                  {vault.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={(e) => handleRemoveVaultMailbox(e, v.address, v.token)}
+                      className="p-0.5 rounded-full hover:bg-white/20 transition-colors ml-1"
+                      title="Close this inbox"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+
+            {vault.length < 5 && (
+              <button
+                type="button"
+                onClick={initializeNewMailbox}
+                disabled={isInitializing}
+                className="px-2.5 py-1 rounded-xl text-xs font-medium border border-dashed border-zinc-300 dark:border-zinc-700 hover:border-indigo-400 dark:hover:border-indigo-500 text-zinc-500 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center space-x-1 transition-colors cursor-pointer"
+                title="Create an additional simultaneous burner inbox"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add Inbox</span>
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           {/* Email Address Display */}
           <div className="space-y-1.5 flex-1 min-w-0">
@@ -274,6 +423,19 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
               <QrCode className="w-4 h-4" />
             </button>
 
+            {/* Audio & Alert Toggle */}
+            <button
+              onClick={handleToggleSound}
+              className={`p-2.5 rounded-xl border transition-colors cursor-pointer ${
+                soundEnabled
+                  ? 'border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400'
+                  : 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
+              }`}
+              title={soundEnabled ? 'Email alert chime: ON (Click to mute)' : 'Email alert chime: OFF (Click to enable)'}
+            >
+              {soundEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+            </button>
+
             {/* Refresh with countdown indicator */}
             <button
               onClick={refreshMessages}
@@ -313,6 +475,12 @@ export const BurnerInbox: React.FC<BurnerInboxProps> = ({ onUnreadChange }) => {
           </div>
         )}
       </div>
+
+      {/* Deliverability Advisor */}
+      <DomainAdvisor
+        currentDomain={mailbox?.address ? mailbox.address.split('@')[1] : 'guerrillamail.com'}
+        onSwitchToGmailMatrix={onSwitchToGmailMatrix}
+      />
 
       {/* Main Mailbox Content: Split View */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start min-h-[460px]">

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test:unit": "node --experimental-strip-types tests/test-generator.ts && node --experimental-strip-types tests/test-filter-xml.ts && node --experimental-strip-types tests/test-burner-api.ts",
+    "test:unit": "node --experimental-strip-types tests/test-generator.ts && node --experimental-strip-types tests/test-filter-xml.ts && node --experimental-strip-types tests/test-burner-api.ts && node --experimental-strip-types tests/test-otp-extractor.ts && node --experimental-strip-types tests/test-crypto-generator.ts",
     "preview": "vite preview"
   },
   "dependencies": {
