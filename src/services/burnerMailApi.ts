@@ -201,8 +201,13 @@ export function saveMailboxVault(vault: BurnerMailbox[]): void {
  */
 export function addMailboxToVault(mailbox: BurnerMailbox): BurnerMailbox[] {
   const existing = getSavedMailboxVault();
-  const filtered = existing.filter((m) => m.address !== mailbox.address);
-  const updated = [mailbox, ...filtered].slice(0, 5);
+  const exists = existing.find((m) => m.address === mailbox.address);
+  let updated: BurnerMailbox[];
+  if (exists) {
+    updated = existing.map((m) => (m.address === mailbox.address ? mailbox : m));
+  } else {
+    updated = [...existing, mailbox].slice(0, 5);
+  }
   saveMailboxVault(updated);
   return updated;
 }
